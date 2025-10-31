@@ -93,26 +93,24 @@ export class StorkSubscriber extends DurableObject {
 		try {
 			const apiKey = (this.env as any).STORK_API_KEY;
 
-			// Use fetch with WebSocket upgrade for Cloudflare Workers
-			// This allows us to include custom headers like Authorization
-			const url = 'https://api.jp.stork-oracle.network/evm/subscribe';
-			const upgradeResponse = await fetch(url, {
+			const wsUrl = 'https://api.jp.stork-oracle.network/evm/subscribe';
+
+			const resp = await fetch(wsUrl, {
 				headers: {
 					Upgrade: 'websocket',
-					Connection: 'Upgrade',
 					Authorization: `Basic ${apiKey}`,
 				},
 			});
 
-			// Get the WebSocket from the response
-			const ws = upgradeResponse.webSocket;
+			const ws = resp.webSocket;
 			if (!ws) {
-				throw new Error('Failed to establish WebSocket connection');
+				throw new Error('Server did not accept WebSocket');
 			}
 
-			// Accept the WebSocket
 			ws.accept();
 			this.ws = ws;
+
+			console.log('Connected to Stork WebSocket');
 
 			this.ws.addEventListener('message', async (event) => {
 				try {
@@ -126,8 +124,8 @@ export class StorkSubscriber extends DurableObject {
 				}
 			});
 
-			this.ws.addEventListener('close', () => {
-				console.log('WebSocket closed, reconnecting in 5s...');
+			this.ws.addEventListener('close', (event) => {
+				console.log(`WebSocket closed (code: ${event.code}), reconnecting in 5s...`);
 				this.ws = null;
 				setTimeout(() => this.connectToStork(), 5000);
 			});
@@ -136,9 +134,6 @@ export class StorkSubscriber extends DurableObject {
 				console.error('WebSocket error:', error);
 			});
 
-			console.log('✅ Connected to Stork WebSocket');
-
-			// Subscribe to all markets
 			for (const [storkAssetId] of this.markets) {
 				this.subscribeToAsset(storkAssetId);
 			}

@@ -18,4 +18,4 @@ new_classes = ["StorkSubscriber"]
 [vars]
 ORACLE_ADDRESS = "0x0AF43F745d3Db1e184b72A6dA4023F131f6bFbD0"
 MARKET_FACTORY_ADDRESS = "0xEcc14021f2742b2BCf23d6d22A1435736ED0f386"
-WORKER_URL = ""
+WORKER_URL = "https://oracle-feed.nj-345.workers.dev"
