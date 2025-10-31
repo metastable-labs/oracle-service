@@ -125,16 +125,32 @@ async function handleAddMarket(request: Request, env: Env): Promise<Response> {
 
 		console.log(`Adding market: ${name}`);
 
+		const storkAssetId = sourceMarketId;
+		let initialPrice = 5000;
+
+		try {
+			const currentPrice = await fetchLatestPriceFromStork(env, storkAssetId);
+
+			if (currentPrice !== null) {
+				initialPrice = currentPrice;
+				console.log(`Fetched initial price for ${name}: ${initialPrice}bp`);
+
+				await submitInitialPrice(env, marketId, initialPrice);
+			}
+		} catch (error) {
+			console.error(`Failed to fetch/submit initial price for ${name}:`, error);
+		}
+
 		await addMarketToDO(env, {
 			marketId,
 			sourceMarketId,
-			storkAssetId: sourceMarketId,
+			storkAssetId,
 			name,
-			lastPrice: 0,
-			lastUpdate: 0,
+			lastPrice: initialPrice,
+			lastUpdate: Date.now(),
 		});
 
-		return new Response('Market added successfully', { status: 200 });
+		return new Response(`Market added with initial price ${initialPrice}bp`, { status: 200 });
 	} catch (error) {
 		console.error('Add market failed:', error);
 		return new Response(`Add market failed: ${error}`, { status: 500 });
@@ -192,19 +208,115 @@ async function syncNewMarkets(env: Env) {
 
 			console.log(`New market detected: ${name}`);
 
+			const storkAssetId = sourceMarketId as string;
+			let initialPrice = 5000;
+
+			try {
+				const currentPrice = await fetchLatestPriceFromStork(env, storkAssetId);
+
+				if (currentPrice !== null) {
+					initialPrice = currentPrice;
+					console.log(`Fetched initial price for ${name}: ${initialPrice}bp`);
+
+					await submitInitialPrice(env, marketId as string, initialPrice);
+				}
+			} catch (error) {
+				console.error(`Failed to fetch/submit initial price for ${name}:`, error);
+			}
+
 			await addMarketToDO(env, {
 				marketId: marketId as string,
 				sourceMarketId: sourceMarketId as string,
-				storkAssetId: sourceMarketId as string,
+				storkAssetId,
 				name: name as string,
-				lastPrice: 0,
-				lastUpdate: 0,
+				lastPrice: initialPrice,
+				lastUpdate: Date.now(),
 			});
 
-			console.log(`Added market: ${name}`);
+			console.log(`Added market: ${name} with initial price ${initialPrice}bp`);
 		}
 	} catch (error) {
 		console.error('Error syncing markets:', error);
+		throw error;
+	}
+}
+
+async function fetchLatestPriceFromStork(env: Env, assetId: string): Promise<number | null> {
+	try {
+		const response = await fetch(`https://rest.jp.stork-oracle.network/v1/prices/latest?assets=${assetId}`, {
+			headers: {
+				Authorization: `Basic ${env.STORK_API_KEY}`,
+			},
+		});
+
+		if (!response.ok) {
+			console.error(`Stork API error: ${response.status}`);
+			return null;
+		}
+
+		const data = (await response.json()) as Record<string, any>;
+		const assetData = data[assetId];
+
+		if (!assetData || !assetData.price) {
+			console.error(`No price data for ${assetId}`);
+			return null;
+		}
+
+		const probability = parseFloat(assetData.price) / 1e18;
+		const basisPoints = Math.round(probability * 10000);
+
+		if (basisPoints < 0 || basisPoints > 10000) {
+			console.error(`Invalid price ${basisPoints}bp for ${assetId}`);
+			return null;
+		}
+
+		return basisPoints;
+	} catch (error) {
+		console.error(`Error fetching price from Stork:`, error);
+		return null;
+	}
+}
+
+async function submitInitialPrice(env: Env, marketId: string, price: number) {
+	const account = privateKeyToAccount(env.PRIVATE_KEY as `0x${string}`);
+
+	const publicClient = createPublicClient({
+		chain: base,
+		transport: http(env.BASE_SEPOLIA_RPC_URL),
+	});
+
+	const walletClient = createWalletClient({
+		account,
+		chain: base,
+		transport: http(env.BASE_SEPOLIA_RPC_URL),
+	});
+
+	try {
+		await publicClient.simulateContract({
+			address: env.ORACLE_ADDRESS as `0x${string}`,
+			abi: ORACLE_ABI,
+			functionName: 'updatePrice',
+			args: [marketId as `0x${string}`, BigInt(price)],
+			account,
+		});
+
+		const hash = await walletClient.writeContract({
+			address: env.ORACLE_ADDRESS as `0x${string}`,
+			abi: ORACLE_ABI,
+			functionName: 'updatePrice',
+			args: [marketId as `0x${string}`, BigInt(price)],
+		});
+
+		console.log(`Initial price submitted: ${hash}`);
+
+		const receipt = await publicClient.waitForTransactionReceipt({
+			hash,
+			timeout: 60_000,
+		});
+
+		console.log(`Initial price confirmed in block ${receipt.blockNumber}`);
+	} catch (error) {
+		console.error(`Error submitting initial price:`, error);
 		throw error;
 	}
 }
