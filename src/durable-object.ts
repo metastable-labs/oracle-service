@@ -19,6 +19,7 @@ export class StorkSubscriber extends DurableObject {
 	private ws: WebSocket | null = null;
 	private markets: Map<string, MarketMapping> = new Map(); // storkAssetId → MarketMapping
 	private connectionInitialized = false;
+	private pingInterval: ReturnType<typeof setInterval> | null = null;
 
 	constructor(ctx: DurableObjectState, env: any) {
 		super(ctx, env);
@@ -136,6 +137,9 @@ export class StorkSubscriber extends DurableObject {
 
 			console.log('Connected to Stork WebSocket');
 
+			// Start heartbeat to keep connection alive
+			this.startHeartbeat();
+
 			this.ws.addEventListener('message', async (event) => {
 				try {
 					const message = JSON.parse(event.data as string);
@@ -151,6 +155,7 @@ export class StorkSubscriber extends DurableObject {
 
 			this.ws.addEventListener('close', (event) => {
 				console.log(`WebSocket closed (code: ${event.code}), reconnecting in 5s...`);
+				this.stopHeartbeat();
 				this.ws = null;
 				setTimeout(() => this.connectToStork(), 5000);
 			});
@@ -168,6 +173,7 @@ export class StorkSubscriber extends DurableObject {
 		} catch (error) {
 			console.error('Failed to connect to Stork:', error);
 			console.error('Error details:', error instanceof Error ? error.message : String(error));
+			this.stopHeartbeat();
 			setTimeout(() => this.connectToStork(), 5000);
 		}
 	}
@@ -284,7 +290,6 @@ export class StorkSubscriber extends DurableObject {
 	}
 
 	private subscribeToAssets(assetIds: string[]) {
-		console.log(this.ws?.readyState, 'state ');
 		if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
 			console.log('Cannot subscribe: WebSocket not connected');
 			return;
@@ -303,5 +308,28 @@ export class StorkSubscriber extends DurableObject {
 		this.ws.send(JSON.stringify(message));
 
 		console.log(`📡 Subscribed to ${assetIds.length} asset(s): ${assetIds.join(', ')}`);
+	}
+
+	private startHeartbeat() {
+		this.stopHeartbeat();
+
+		// Send ping every 30 seconds to keep connection alive
+		this.pingInterval = setInterval(() => {
+			if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+				try {
+					this.ws.send(JSON.stringify({ type: 'ping' }));
+					console.log('Sent heartbeat ping');
+				} catch (error) {
+					console.error('Failed to send ping:', error);
+				}
+			}
+		}, 30000);
+	}
+
+	private stopHeartbeat() {
+		if (this.pingInterval) {
+			clearInterval(this.pingInterval);
+			this.pingInterval = null;
+		}
 	}
 }
