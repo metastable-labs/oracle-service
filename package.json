@@ -11,5 +11,8 @@
 	"devDependencies": {
 		"typescript": "^5.5.2",
 		"wrangler": "^4.45.3"
+	},
+	"dependencies": {
+		"viem": "^2.38.5"
 	}
 }

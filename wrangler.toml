@@ -1,0 +1,21 @@
+name = "oracle-feed"
+main = "src/index.ts"
+
+compatibility_date = "2025-10-31"
+compatibility_flags = ["nodejs_compat"]
+
+[triggers]
+crons = ["*/5 * * * *"]  # Check for new markets every 5 min
+
+[[durable_objects.bindings]]
+name = "STORK_SUBSCRIBER"
+class_name = "StorkSubscriber"
+
+[[migrations]]
+tag = "v1"
+new_classes = ["StorkSubscriber"]
+
+[vars]
+ORACLE_ADDRESS = "0x0AF43F745d3Db1e184b72A6dA4023F131f6bFbD0"
+MARKET_FACTORY_ADDRESS = "0xEcc14021f2742b2BCf23d6d22A1435736ED0f386"
+WORKER_URL = ""
