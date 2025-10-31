@@ -18,6 +18,7 @@ interface PendingUpdate {
 export class StorkSubscriber extends DurableObject {
 	private ws: WebSocket | null = null;
 	private markets: Map<string, MarketMapping> = new Map(); // storkAssetId → MarketMapping
+	private connectionInitialized = false;
 
 	constructor(ctx: DurableObjectState, env: any) {
 		super(ctx, env);
@@ -34,8 +35,15 @@ export class StorkSubscriber extends DurableObject {
 	async fetch(request: Request): Promise<Response> {
 		const url = new URL(request.url);
 
+		// Auto-initialize WebSocket connection on first request
+		if (!this.connectionInitialized && this.markets.size > 0) {
+			this.connectionInitialized = true;
+			this.connectToStork(); // Don't await - let it connect in background
+		}
+
 		// Initialize WebSocket connection
 		if (url.pathname === '/connect') {
+			this.connectionInitialized = true;
 			await this.connectToStork();
 			return new Response('Connected to Stork');
 		}
