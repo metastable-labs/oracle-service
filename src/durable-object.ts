@@ -95,24 +95,40 @@ export class StorkSubscriber extends DurableObject {
 
 	private async connectToStork() {
 		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
+			console.log('WebSocket already connected');
 			return;
 		}
+
+		console.log('Attempting to connect to Stork WebSocket...');
 
 		try {
 			const apiKey = (this.env as any).STORK_API_KEY;
 
+			if (!apiKey) {
+				throw new Error('STORK_API_KEY not configured');
+			}
+
 			const wsUrl = 'https://api.jp.stork-oracle.network/evm/subscribe';
+			console.log(`Connecting to ${wsUrl}...`);
 
 			const resp = await fetch(wsUrl, {
 				headers: {
 					Upgrade: 'websocket',
 					Authorization: `Basic ${apiKey}`,
+					'Sec-WebSocket-Extensions': 'permessage-deflate',
 				},
 			});
 
+			console.log(`Fetch response status: ${resp.status}`);
+
 			const ws = resp.webSocket;
 			if (!ws) {
-				throw new Error('Server did not accept WebSocket');
+				// Read the response body to see the error
+				const body = await resp.text();
+				console.error('Response has no webSocket property');
+				console.error('Response body:', body);
+				console.error('Response headers:', JSON.stringify(Object.fromEntries(resp.headers)));
+				throw new Error(`Server did not accept WebSocket (${resp.status}): ${body}`);
 			}
 
 			ws.accept();
@@ -123,6 +139,7 @@ export class StorkSubscriber extends DurableObject {
 			this.ws.addEventListener('message', async (event) => {
 				try {
 					const message = JSON.parse(event.data as string);
+					console.log('Received message:', message.type);
 
 					if (message.type === 'oracle_prices') {
 						await this.handlePriceUpdate(message);
@@ -142,11 +159,15 @@ export class StorkSubscriber extends DurableObject {
 				console.error('WebSocket error:', error);
 			});
 
-			for (const [storkAssetId] of this.markets) {
-				this.subscribeToAsset(storkAssetId);
+			console.log(`Subscribing to ${this.markets.size} markets...`);
+
+			if (this.markets.size > 0) {
+				const assetIds = Array.from(this.markets.keys());
+				this.subscribeToAssets(assetIds);
 			}
 		} catch (error) {
 			console.error('Failed to connect to Stork:', error);
+			console.error('Error details:', error instanceof Error ? error.message : String(error));
 			setTimeout(() => this.connectToStork(), 5000);
 		}
 	}
@@ -240,7 +261,7 @@ export class StorkSubscriber extends DurableObject {
 
 		// Subscribe if WebSocket is active
 		if (this.ws && this.ws.readyState === WebSocket.OPEN) {
-			this.subscribeToAsset(market.storkAssetId);
+			this.subscribeToAssets([market.storkAssetId]);
 		}
 
 		console.log(`✅ Added market: ${market.name} (${market.storkAssetId})`);
@@ -255,24 +276,32 @@ export class StorkSubscriber extends DurableObject {
 			this.ws.send(
 				JSON.stringify({
 					type: 'unsubscribe',
+					trace_id: `unsub-${Date.now()}`,
 					data: [storkAssetId],
 				})
 			);
 		}
 	}
 
-	private subscribeToAsset(assetId: string) {
+	private subscribeToAssets(assetIds: string[]) {
+		console.log(this.ws?.readyState, 'state ');
 		if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+			console.log('Cannot subscribe: WebSocket not connected');
 			return;
 		}
 
-		this.ws.send(
-			JSON.stringify({
-				type: 'subscribe',
-				data: [assetId],
-			})
-		);
+		if (assetIds.length === 0) {
+			return;
+		}
 
-		console.log(`📡 Subscribed to ${assetId}`);
+		const message = {
+			type: 'subscribe',
+			trace_id: `sub-${Date.now()}`,
+			data: assetIds,
+		};
+
+		this.ws.send(JSON.stringify(message));
+
+		console.log(`📡 Subscribed to ${assetIds.length} asset(s): ${assetIds.join(', ')}`);
 	}
 }
