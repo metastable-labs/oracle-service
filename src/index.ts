@@ -1,6 +1,7 @@
 import { createPublicClient, createWalletClient, http, parseAbi } from 'viem';
 import { base } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
+import { getStorkAssetId } from './market-mappings';
 
 export { StorkSubscriber } from './durable-object';
 
@@ -125,7 +126,14 @@ async function handleAddMarket(request: Request, env: Env): Promise<Response> {
 
 		console.log(`Adding market: ${name}`);
 
-		const storkAssetId = sourceMarketId;
+		const storkAssetId = getStorkAssetId(sourceMarketId);
+
+		if (!storkAssetId) {
+			return new Response(`No Stork asset ID mapping found for sourceMarketId: ${sourceMarketId}. Please add to market-mappings.ts`, {
+				status: 400,
+			});
+		}
+
 		let initialPrice = 5000;
 
 		try {
@@ -208,7 +216,14 @@ async function syncNewMarkets(env: Env) {
 
 			console.log(`New market detected: ${name}`);
 
-			const storkAssetId = sourceMarketId as string;
+			const storkAssetId = getStorkAssetId(sourceMarketId as string);
+
+			if (!storkAssetId) {
+				console.error(`No Stork asset ID mapping found for sourceMarketId: ${sourceMarketId}`);
+				console.error(`Please add mapping to market-mappings.ts`);
+				continue;
+			}
+
 			let initialPrice = 5000;
 
 			try {
