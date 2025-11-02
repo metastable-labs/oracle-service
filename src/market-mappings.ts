@@ -20,11 +20,11 @@
 export const MARKET_TO_STORK_ASSET: Record<string, string> = {
 	// Super Bowl Champion 2026 - Kansas City Chiefs
 	// Source: https://polymarket.com/event/super-bowl-champion-2026-731
-	'super-bowl-champion-2026-kansas-city': 'PM_SB_2_8_26_KCC_Y',
+	'540221': 'PM_SB_2_8_26_KCC_Y',
 
 	// Wicked: For Good - Biggest Movie Opening 2025
 	// Source: https://polymarket.com/event/which-movie-has-best-opening-weekend-in-2025
-	'wicked-for-good-opening-2025': 'PM_TOWD_25_WFG_Y',
+	'518509': 'PM_TOWD_25_WFG_Y',
 
 	// Add more mappings as markets are created
 	// 'source-market-id': 'STORK_ASSET_ID',

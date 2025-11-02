@@ -7,7 +7,7 @@ Real-time price oracle updater for prediction markets. Fetches probability price
 1. **Market Detection** - Monitors blockchain for new market creation events
 2. **Initial Price** - Fetches current price from Stork REST API and submits to oracle
 3. **Real-time Updates** - Subscribes to Stork WebSocket for live price feeds
-4. **On-chain Updates** - Automatically submits price changes to oracle contract
+4. **On-chain Updates** - Automatically submits signed price changes to oracle contract
 
 ## Setup
 
