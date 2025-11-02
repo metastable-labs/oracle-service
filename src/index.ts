@@ -76,12 +76,11 @@ async function handleInit(env: Env): Promise<Response> {
 		const id = env.STORK_SUBSCRIBER.idFromName('main');
 		const stub = env.STORK_SUBSCRIBER.get(id);
 
+		// Trigger DO initialization (auto-starts WebSocket and event watcher)
 		await stub.fetch('http://do/connect');
-		console.log('Connected to Stork');
+		console.log('Durable Object initialized');
 
-		await stub.fetch('http://do/watch-events');
-		console.log('Event watcher started');
-
+		// Sync any existing markets from blockchain
 		await syncNewMarkets(env);
 		console.log('Markets synced');
 

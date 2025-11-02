@@ -44,15 +44,18 @@ export class StorkSubscriber extends DurableObject {
 	async fetch(request: Request): Promise<Response> {
 		const url = new URL(request.url);
 
-		// Auto-initialize WebSocket connection on first request
-		if (!this.connectionInitialized && this.markets.size > 0) {
+		// Auto-initialize on first request
+		if (!this.connectionInitialized) {
 			this.connectionInitialized = true;
 			this.connectToStork(); // Don't await - let it connect in background
+			this.startEventWatcher(); // Start event watcher
+		} else if (!this.eventWatcherActive) {
+			// Restart event watcher if it's not running
+			this.startEventWatcher();
 		}
 
 		// Initialize WebSocket connection
 		if (url.pathname === '/connect') {
-			this.connectionInitialized = true;
 			await this.connectToStork();
 			return new Response('Connected to Stork');
 		}
