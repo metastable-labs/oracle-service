@@ -1,5 +1,5 @@
 import { createPublicClient, createWalletClient, http, parseAbi } from 'viem';
-import { base } from 'viem/chains';
+import { baseSepolia } from 'viem/chains';
 import { privateKeyToAccount } from 'viem/accounts';
 import { getStorkAssetId } from './market-mappings';
 
@@ -177,7 +177,7 @@ async function syncNewMarkets(env: Env) {
 	console.log('Syncing markets from blockchain...');
 
 	const publicClient = createPublicClient({
-		chain: base,
+		chain: baseSepolia,
 		transport: http(env.BASE_SEPOLIA_RPC_URL),
 	});
 
@@ -292,13 +292,13 @@ async function submitInitialPrice(env: Env, marketId: string, price: number) {
 	const account = privateKeyToAccount(env.PRIVATE_KEY as `0x${string}`);
 
 	const publicClient = createPublicClient({
-		chain: base,
+		chain: baseSepolia,
 		transport: http(env.BASE_SEPOLIA_RPC_URL),
 	});
 
 	const walletClient = createWalletClient({
 		account,
-		chain: base,
+		chain: baseSepolia,
 		transport: http(env.BASE_SEPOLIA_RPC_URL),
 	});
 
@@ -349,13 +349,13 @@ async function submitUpdates(env: Env, updates: PendingUpdate[]) {
 	const account = privateKeyToAccount(env.PRIVATE_KEY as `0x${string}`);
 
 	const publicClient = createPublicClient({
-		chain: base,
+		chain: baseSepolia,
 		transport: http(env.BASE_SEPOLIA_RPC_URL),
 	});
 
 	const walletClient = createWalletClient({
 		account,
-		chain: base,
+		chain: baseSepolia,
 		transport: http(env.BASE_SEPOLIA_RPC_URL),
 	});
 

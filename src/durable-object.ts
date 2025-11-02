@@ -1,6 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
 import { createPublicClient, http, parseAbi } from 'viem';
-import { base } from 'viem/chains';
+import { baseSepolia } from 'viem/chains';
 
 interface MarketMapping {
 	marketId: string; // bytes32 on-chain ID
@@ -368,7 +368,7 @@ export class StorkSubscriber extends DurableObject {
 		}
 
 		const publicClient = createPublicClient({
-			chain: base,
+			chain: baseSepolia,
 			transport: http((this.env as any).BASE_SEPOLIA_RPC_URL),
 		});
 
