@@ -65,6 +65,10 @@ export default {
 			return Response.json({ status: 'ok', timestamp: Date.now() });
 		}
 
+		if (url.pathname === '/reset' && request.method === 'POST') {
+			return await handleReset(env);
+		}
+
 		return new Response('Oracle Feed Worker', { status: 200 });
 	},
 };
@@ -170,6 +174,26 @@ async function handleGetMarkets(env: Env): Promise<Response> {
 	} catch (error) {
 		console.error('Get markets failed:', error);
 		return new Response(`Get markets failed: ${error}`, { status: 500 });
+	}
+}
+
+async function handleReset(env: Env): Promise<Response> {
+	try {
+		console.log('Resetting Durable Object...');
+
+		const id = env.STORK_SUBSCRIBER.idFromName('main');
+		const stub = env.STORK_SUBSCRIBER.get(id);
+
+		const response = await stub.fetch('http://do/reset', {
+			method: 'POST',
+		});
+
+		return new Response('Durable Object reset successfully. Call /init to restart.', {
+			status: 200,
+		});
+	} catch (error) {
+		console.error('Reset failed:', error);
+		return new Response(`Reset failed: ${error}`, { status: 500 });
 	}
 }
 

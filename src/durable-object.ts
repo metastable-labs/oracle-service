@@ -85,6 +85,12 @@ export class StorkSubscriber extends DurableObject {
 			return new Response(`Removed market`);
 		}
 
+		// Reset DO state (for testing)
+		if (url.pathname === '/reset' && request.method === 'POST') {
+			await this.resetState();
+			return new Response('DO state reset');
+		}
+
 		return new Response('Stork Subscriber DO');
 	}
 
@@ -423,5 +429,33 @@ export class StorkSubscriber extends DurableObject {
 			this.eventWatcherActive = false;
 			console.log('Event watcher stopped');
 		}
+	}
+
+	private async resetState() {
+		console.log('Resetting Durable Object state...');
+
+		// Stop WebSocket
+		if (this.ws) {
+			this.ws.close();
+			this.ws = null;
+		}
+
+		// Stop heartbeat
+		this.stopHeartbeat();
+
+		// Stop event watcher
+		this.stopEventWatcher();
+
+		// Clear markets
+		this.markets.clear();
+
+		// Clear storage
+		await this.ctx.storage.deleteAll();
+
+		// Reset flags
+		this.connectionInitialized = false;
+		this.eventWatcherActive = false;
+
+		console.log('DO state reset complete');
 	}
 }
