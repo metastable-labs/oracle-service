@@ -4,7 +4,7 @@ Real-time price oracle updater for prediction markets. Fetches probability price
 
 ## How It Works
 
-1. **Market Detection** - Monitors blockchain for new market creation events
+1. **Event Watching** - Durable Object watches blockchain for `MarketCreated` events in real-time
 2. **Initial Price** - Fetches current price from Stork REST API and submits to oracle
 3. **Real-time Updates** - Subscribes to Stork WebSocket for live price feeds
 4. **On-chain Updates** - Automatically submits signed price changes to oracle contract
@@ -61,8 +61,9 @@ curl https://your-worker.workers.dev/init
 ## Architecture
 
 - **Cloudflare Workers** - Main worker handles HTTP requests and blockchain interactions
-- **Durable Objects** - Maintains persistent WebSocket connection to Stork
-- **Scheduled Tasks** - Automatically syncs new markets every 5 minutes
+- **Durable Objects** - Maintains persistent connections:
+  - WebSocket connection to Stork for real-time price updates
+  - Event watcher for `MarketCreated` events using `viem.watchContractEvent`
 
 ## License
 

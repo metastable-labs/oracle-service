@@ -1,4 +1,6 @@
 import { DurableObject } from 'cloudflare:workers';
+import { createPublicClient, http, parseAbi } from 'viem';
+import { base } from 'viem/chains';
 
 interface MarketMapping {
 	marketId: string; // bytes32 on-chain ID
@@ -15,11 +17,17 @@ interface PendingUpdate {
 	timestamp: number;
 }
 
+const FACTORY_ABI = parseAbi([
+	'event MarketCreated(bytes32 indexed marketId, string name, string sourcePlatform, string sourceMarketId, uint64 expiryTimestamp, address indexed creator)',
+]);
+
 export class StorkSubscriber extends DurableObject {
 	private ws: WebSocket | null = null;
 	private markets: Map<string, MarketMapping> = new Map(); // storkAssetId → MarketMapping
 	private connectionInitialized = false;
 	private pingInterval: ReturnType<typeof setInterval> | null = null;
+	private eventWatcherActive = false;
+	private unwatchEvents: (() => void) | null = null;
 
 	constructor(ctx: DurableObjectState, env: any) {
 		super(ctx, env);
@@ -49,6 +57,12 @@ export class StorkSubscriber extends DurableObject {
 			return new Response('Connected to Stork');
 		}
 
+		// Start watching for MarketCreated events
+		if (url.pathname === '/watch-events') {
+			await this.startEventWatcher();
+			return new Response('Event watcher started');
+		}
+
 		// Add new market (called when MarketFactory creates a market)
 		if (url.pathname === '/add-market' && request.method === 'POST') {
 			const market: MarketMapping = await request.json();
@@ -71,16 +85,20 @@ export class StorkSubscriber extends DurableObject {
 		return new Response('Stork Subscriber DO');
 	}
 
-	// Alarm handler - processes pending updates
+	// Alarm handler - processes pending updates and keeps DO alive
 	async alarm() {
 		try {
+			// Keep-alive: Reschedule alarm for 25 seconds from now
+			// This prevents the DO from hibernating
+			await this.ctx.storage.setAlarm(Date.now() + 25000);
+
 			const pending = await this.ctx.storage.get<PendingUpdate[]>('pending_updates');
 
 			if (!pending || pending.length === 0) {
 				return;
 			}
 
-			console.log(`⏰ Processing ${pending.length} pending updates`);
+			console.log(`Processing ${pending.length} pending updates`);
 
 			// Submit to blockchain
 			await this.submitUpdatesToBlockchain(pending);
@@ -234,11 +252,9 @@ export class StorkSubscriber extends DurableObject {
 
 			await this.ctx.storage.put('pending_updates', pending);
 
-			// Schedule immediate alarm to process (debounced by 2 seconds to batch rapid updates)
-			const existingAlarm = await this.ctx.storage.getAlarm();
-			if (!existingAlarm) {
-				await this.ctx.storage.setAlarm(Date.now() + 2000);
-			}
+			// Schedule alarm to process updates (2 seconds to batch rapid updates)
+			// This also serves as keep-alive
+			await this.ctx.storage.setAlarm(Date.now() + 2000);
 		}
 	}
 
@@ -330,6 +346,79 @@ export class StorkSubscriber extends DurableObject {
 		if (this.pingInterval) {
 			clearInterval(this.pingInterval);
 			this.pingInterval = null;
+		}
+	}
+
+	private async startEventWatcher() {
+		if (this.eventWatcherActive) {
+			console.log('Event watcher already running');
+			return;
+		}
+
+		console.log('Starting MarketCreated event watcher...');
+
+		// Set initial alarm to keep DO alive
+		const existingAlarm = await this.ctx.storage.getAlarm();
+		if (!existingAlarm) {
+			await this.ctx.storage.setAlarm(Date.now() + 25000);
+			console.log('Keep-alive alarm set');
+		}
+
+		const publicClient = createPublicClient({
+			chain: base,
+			transport: http((this.env as any).BASE_SEPOLIA_RPC_URL),
+		});
+
+		const factoryAddress = (this.env as any).MARKET_FACTORY_ADDRESS as `0x${string}`;
+
+		this.unwatchEvents = publicClient.watchContractEvent({
+			address: factoryAddress,
+			abi: FACTORY_ABI,
+			eventName: 'MarketCreated',
+			onLogs: async (logs) => {
+				for (const log of logs) {
+					const { marketId, name, sourcePlatform, sourceMarketId } = log.args;
+
+					console.log(`New market detected: ${name}`);
+
+					try {
+						const workerUrl = (this.env as any).WORKER_URL;
+						const response = await fetch(`${workerUrl}/add-market`, {
+							method: 'POST',
+							headers: { 'Content-Type': 'application/json' },
+							body: JSON.stringify({
+								marketId,
+								name,
+								sourcePlatform,
+								sourceMarketId,
+							}),
+						});
+
+						if (response.ok) {
+							console.log(`Market added successfully: ${name}`);
+						} else {
+							console.error(`Failed to add market: ${response.status}`);
+						}
+					} catch (error) {
+						console.error('Error adding market:', error);
+					}
+				}
+			},
+			onError: (error) => {
+				console.error('Event watcher error:', error);
+			},
+		});
+
+		this.eventWatcherActive = true;
+		console.log('Event watcher started');
+	}
+
+	private stopEventWatcher() {
+		if (this.unwatchEvents) {
+			this.unwatchEvents();
+			this.unwatchEvents = null;
+			this.eventWatcherActive = false;
+			console.log('Event watcher stopped');
 		}
 	}
 }

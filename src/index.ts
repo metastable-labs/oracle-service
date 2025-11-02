@@ -42,12 +42,6 @@ interface MarketMapping {
 }
 
 export default {
-	// Scheduled task: Check for new markets every 5 minutes
-	async scheduled(event: ScheduledEvent, env: Env, ctx: ExecutionContext) {
-		console.log('Running scheduled market sync');
-		ctx.waitUntil(syncNewMarkets(env));
-	},
-
 	async fetch(request: Request, env: Env): Promise<Response> {
 		const url = new URL(request.url);
 
@@ -84,6 +78,9 @@ async function handleInit(env: Env): Promise<Response> {
 
 		await stub.fetch('http://do/connect');
 		console.log('Connected to Stork');
+
+		await stub.fetch('http://do/watch-events');
+		console.log('Event watcher started');
 
 		await syncNewMarkets(env);
 		console.log('Markets synced');

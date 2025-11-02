@@ -4,9 +4,6 @@ main = "src/index.ts"
 compatibility_date = "2025-10-31"
 compatibility_flags = ["nodejs_compat"]
 
-[triggers]
-crons = ["*/5 * * * *"]  # Check for new markets every 5 min
-
 [[durable_objects.bindings]]
 name = "STORK_SUBSCRIBER"
 class_name = "StorkSubscriber"
