@@ -65,6 +65,10 @@ export default {
 			return Response.json({ status: 'ok', timestamp: Date.now() });
 		}
 
+		if (url.pathname === '/status') {
+			return await handleStatus(env);
+		}
+
 		if (url.pathname === '/reset' && request.method === 'POST') {
 			return await handleReset(env);
 		}
@@ -174,6 +178,18 @@ async function handleGetMarkets(env: Env): Promise<Response> {
 	} catch (error) {
 		console.error('Get markets failed:', error);
 		return new Response(`Get markets failed: ${error}`, { status: 500 });
+	}
+}
+
+async function handleStatus(env: Env): Promise<Response> {
+	try {
+		const id = env.STORK_SUBSCRIBER.idFromName('main');
+		const stub = env.STORK_SUBSCRIBER.get(id);
+		const response = await stub.fetch('http://do/status');
+		return response;
+	} catch (error) {
+		console.error('Get status failed:', error);
+		return new Response(`Get status failed: ${error}`, { status: 500 });
 	}
 }
 

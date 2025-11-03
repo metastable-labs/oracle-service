@@ -78,6 +78,20 @@ export class StorkSubscriber extends DurableObject {
 			return Response.json(Array.from(this.markets.values()));
 		}
 
+		// Status check
+		if (url.pathname === '/status') {
+			const status = {
+				connectionInitialized: this.connectionInitialized,
+				websocketState: this.ws?.readyState || null,
+				websocketConnected: this.ws?.readyState === WebSocket.OPEN,
+				eventWatcherActive: this.eventWatcherActive,
+				heartbeatActive: this.pingInterval !== null,
+				marketsCount: this.markets.size,
+				nextAlarm: await this.ctx.storage.getAlarm(),
+			};
+			return Response.json(status);
+		}
+
 		// Remove market
 		if (url.pathname === '/remove-market' && request.method === 'POST') {
 			const { storkAssetId } = (await request.json()) as { storkAssetId: string };
@@ -96,28 +110,46 @@ export class StorkSubscriber extends DurableObject {
 
 	// Alarm handler - processes pending updates and keeps DO alive
 	async alarm() {
+		console.log('Alarm fired - keep-alive tick');
+
 		try {
-			// Keep-alive: Reschedule alarm for 25 seconds from now
-			// This prevents the DO from hibernating
+			// ALWAYS reschedule first to ensure continuous keep-alive
 			await this.ctx.storage.setAlarm(Date.now() + 25000);
 
-			const pending = await this.ctx.storage.get<PendingUpdate[]>('pending_updates');
-
-			if (!pending || pending.length === 0) {
-				return;
+			// Check and restart WebSocket if needed
+			if (!this.ws || this.ws.readyState !== WebSocket.OPEN) {
+				console.log('WebSocket not connected, reconnecting...');
+				this.connectToStork();
 			}
 
-			console.log(`Processing ${pending.length} pending updates`);
+			// Check and restart event watcher if needed
+			if (!this.eventWatcherActive) {
+				console.log('Event watcher not active, restarting...');
+				this.startEventWatcher();
+			}
 
-			// Submit to blockchain
-			await this.submitUpdatesToBlockchain(pending);
+			// Process pending updates
+			const pending = await this.ctx.storage.get<PendingUpdate[]>('pending_updates');
 
-			// Clear pending updates
-			await this.ctx.storage.delete('pending_updates');
+			if (pending && pending.length > 0) {
+				console.log(`Processing ${pending.length} pending updates`);
+
+				try {
+					await this.submitUpdatesToBlockchain(pending);
+					await this.ctx.storage.delete('pending_updates');
+				} catch (error) {
+					console.error('Failed to submit updates:', error);
+					// Don't clear pending updates on error - will retry next alarm
+				}
+			}
 		} catch (error) {
 			console.error('Error in alarm handler:', error);
-			// Reschedule alarm for retry in 30 seconds
-			await this.ctx.storage.setAlarm(Date.now() + 30000);
+			// Even on error, ensure alarm is rescheduled
+			try {
+				await this.ctx.storage.setAlarm(Date.now() + 25000);
+			} catch (alarmError) {
+				console.error('Failed to reschedule alarm:', alarmError);
+			}
 		}
 	}
 
@@ -181,10 +213,16 @@ export class StorkSubscriber extends DurableObject {
 			});
 
 			this.ws.addEventListener('close', (event) => {
-				console.log(`WebSocket closed (code: ${event.code}), reconnecting in 5s...`);
+				console.log(`WebSocket closed (code: ${event.code}, reason: ${event.reason})`);
 				this.stopHeartbeat();
 				this.ws = null;
-				setTimeout(() => this.connectToStork(), 5000);
+
+				// Immediate reconnection attempt
+				console.log('Attempting immediate reconnection...');
+				setTimeout(() => {
+					console.log('Reconnecting to Stork...');
+					this.connectToStork();
+				}, 2000);
 			});
 
 			this.ws.addEventListener('error', (error) => {
@@ -201,7 +239,14 @@ export class StorkSubscriber extends DurableObject {
 			console.error('Failed to connect to Stork:', error);
 			console.error('Error details:', error instanceof Error ? error.message : String(error));
 			this.stopHeartbeat();
-			setTimeout(() => this.connectToStork(), 5000);
+			this.ws = null;
+
+			// Retry connection after delay
+			console.log('Will retry connection in 5 seconds...');
+			setTimeout(() => {
+				console.log('Retrying Stork connection...');
+				this.connectToStork();
+			}, 5000);
 		}
 	}
 
